@@ -1,0 +1,19 @@
+{
+  "scriptFile": "__init__.py",
+  "bindings": [
+    {
+      "name": "mytimer",
+      "type": "timerTrigger",
+      "direction": "in",
+      "schedule": "0 0 7 * * *"
+    },
+    
+    {
+      "type": "blob",
+      "direction": "out",
+      "name": "outputblob",
+      "path": "datasets/HE__event_{Datetime}.csv",
+      "connection": "AzureWebJobsStorage"
+    }
+  ]
+}
