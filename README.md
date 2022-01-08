@@ -7,7 +7,7 @@ ___
 
 ## How it Works
 
-The NCRON expression for this reposoitory is set to run daily at 7am.
+The NCRON expression for this repository is set to run daily at 7am.
 ~~~
 
 "schedule": "0 0 7 * * *"
