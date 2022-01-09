@@ -27,7 +27,8 @@ def main(mytimer: func.TimerRequest, outputblob: func.Out[bytes]):
 
     #Time delta 
     delta = relativedelta(weeks=2)
-    
+    #create a time delta of 2 weeks        
+    check = dt.now() - delta
     # url to the dataset page
     uri = r"https://historicengland.org.uk/listing/the-list/data-downloads/"
 
@@ -47,7 +48,7 @@ def main(mytimer: func.TimerRequest, outputblob: func.Out[bytes]):
     
     try:
         req.raise_for_status()
-        #Get the first table in the webpage
+        
         #create a BeautfulSoup Object
         soup = bs4.BeautifulSoup(req.text, 'html.parser')
         table = soup.find('table',{'class': 'download-table'})
@@ -61,23 +62,24 @@ def main(mytimer: func.TimerRequest, outputblob: func.Out[bytes]):
                     links.append(uri+link)
                 except:
                     pass
+        #Get the first table in the webpage        
         df = pd.read_html(req.text)[0]
-        df['Link'] = links
+        df['source'] = links
         #Strip the unecessary data
         df['Dataset (.zip)'] = df.apply(lambda x: regx_eng(x['Dataset (.zip)']), axis=1)
         #change the Last updated column to datetime -- then sort
         df['Last updated'] = df['Last updated'].astype('datetime64')        
+        
+        # add the columns updated, organisation to the dataframe
+        df = df.assign(updated=lambda x: x['Last updated']>check,
+            organisation='Historic England')
+        
         df = df.sort_values('Last updated')
 
-        df.reset_index(inplace=True, drop=True)
+        df.reset_index(inplace=True, drop=True)     
+                
         
-        #create a time delta of 1 2 weeks        
-        check = dt.now() - delta
-
-        # add the column Updated to the dataframe
-        df['Updated'] = df.apply(lambda x: x['Last updated']>check, axis=1)
-        df['Organisation'] = 'Historic England'
-        df.rename(columns={'Dataset (.zip)': 'Dataset'}, inplace=True)
+        df.rename(columns={'Dataset (.zip)': 'dataset', 'Last update': 'last_update'}, inplace=True)
         df = df.iloc[:, [6,0,2,4,5]]
 
         logging.info('The length of the HE dataset is {}'.format(len(df)))
@@ -86,7 +88,7 @@ def main(mytimer: func.TimerRequest, outputblob: func.Out[bytes]):
         
         
     except Exception as exc:
-        logging.info('There was a problem: {}'.format(exc))
+        logging.info('There was a problem with the HE dataset: {}'.format(exc))
     
     
     heritage = pd.DataFrame()
@@ -109,33 +111,37 @@ def main(mytimer: func.TimerRequest, outputblob: func.Out[bytes]):
                         except:
                             pass
 
-            dfs['Link'] = links
+            dfs['source'] = links
             heritage = heritage.append(dfs)              
         except Exception as e:
             logging.info(f"There was a problem with the Historic Scotland Dataset{e}")   
 
-    if len(heritage)>0:
+    if len(heritage)>0:        
         heritage = heritage[heritage['Format']=='ZIP']
-        heritage['Last updated'] = heritage['File added'].astype('datetime64')
+        logging.info(f'The length of the Historic Scotland dataset is: {len(heritage)}')
+        heritage['last_update'] = heritage['File added'].astype('datetime64')
         heritage.drop(columns=['File added'], inplace=True)
-        heritage['Dataset'] = heritage.apply(lambda x: regx_scot(x['Link to the data']), axis=1)
-        last_column = heritage.pop('Dataset')
-        heritage.insert(0, 'Dataset', last_column)
-        delta = relativedelta(months=1)
-        recall = dt.now()-delta
+        heritage['dataset'] = heritage.apply(lambda x: regx_scot(x['Link to the data']), axis=1)
+        last_column = heritage.pop('dataset')
+        heritage.insert(0, 'dataset', last_column)
+        
+        heritage = heritage.assign(updated = lambda x: x['last_update']> check,
+                organisation ='Historic Scotland')
 
-        heritage['Updated'] = heritage.apply(lambda x: x['Last updated']> recall, axis=1)
+        
         heritage.reset_index(inplace=True, drop=True)
-        heritage['Organisation'] = 'Historic Scotland'
+        
         heritage = heritage.iloc[:,[7,0,5,4,6]]
         combined = df.append(heritage)
+        logging.info(f'The length of the Combined dataset is: {len(combined)}')
+        
     
     else:
         logging.info('The Heritage dataset was empty')
         combined = df
 
     #get only the updated shapefiles
-    df_updated = combined[combined['Updated']==True]
+    df_updated = combined[combined['updated']==True]
     logging.info('The size of the Updates dataset is {}'.format(len(df_updated)))
     if len(df_updated)>0:
         # save the csv string to a variable
