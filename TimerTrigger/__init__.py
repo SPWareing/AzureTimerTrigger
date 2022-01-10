@@ -79,7 +79,8 @@ def main(mytimer: func.TimerRequest, outputblob: func.Out[bytes]):
         df.reset_index(inplace=True, drop=True)     
                 
         
-        df.rename(columns={'Dataset (.zip)': 'dataset', 'Last update': 'last_update'}, inplace=True)
+        df.rename(columns={'Dataset (.zip)': 'dataset', 'Last updated': 'last_update'}, inplace=True)
+        #reorder the columns
         df = df.iloc[:, [6,0,2,4,5]]
 
         logging.info('The length of the HE dataset is {}'.format(len(df)))
@@ -122,15 +123,14 @@ def main(mytimer: func.TimerRequest, outputblob: func.Out[bytes]):
         heritage['last_update'] = heritage['File added'].astype('datetime64')
         heritage.drop(columns=['File added'], inplace=True)
         heritage['dataset'] = heritage.apply(lambda x: regx_scot(x['Link to the data']), axis=1)
+                
+        heritage = heritage.assign(updated = lambda x: x['last_update']> check,
+                organisation ='Historic Scotland')
         last_column = heritage.pop('dataset')
         heritage.insert(0, 'dataset', last_column)
         
-        heritage = heritage.assign(updated = lambda x: x['last_update']> check,
-                organisation ='Historic Scotland')
-
-        
         heritage.reset_index(inplace=True, drop=True)
-        
+        #reorder the columns
         heritage = heritage.iloc[:,[7,0,5,4,6]]
         combined = df.append(heritage)
         logging.info(f'The length of the Combined dataset is: {len(combined)}')
