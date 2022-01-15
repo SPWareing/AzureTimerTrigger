@@ -137,7 +137,10 @@ def main(mytimer: func.TimerRequest, outputblob: func.Out[bytes]):
         last_column = heritage.pop('dataset')
         heritage.insert(0, 'dataset', last_column)
         
+
         
+
+
         #reorder the columns
         heritage = heritage.iloc[:,[7,0,5,4,6]]
         combined = df.append(heritage)
