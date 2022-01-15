@@ -32,7 +32,7 @@ def main(mytimer: func.TimerRequest, outputblob: func.Out[bytes]):
     # url to the dataset page
     uri = r"https://historicengland.org.uk/listing/the-list/data-downloads/"
 
-    req = requests.get(uri)
+    
     # urls to the Historic Scotland datasets
     uris = [r"https://data.gov.uk/dataset/722b93f3-75fd-47ce-9f06-0efcfa010ecf/listed-buildings", 
     r'https://data.gov.uk/dataset/9075113f-d8e3-48da-bbfc-34f58939529b/scheduled-monuments',
@@ -41,11 +41,19 @@ def main(mytimer: func.TimerRequest, outputblob: func.Out[bytes]):
     r'https://data.gov.uk/dataset/bab10bd8-cc8b-4b4e-9eb7-d620a3ee27d9/gardens-and-designed-landscapes',
     r'https://data.gov.uk/dataset/e290e0b9-b85e-4c9a-a1a3-475acacf5dfe/battlefields-inventory-boundaries',
     r'https://data.gov.uk/dataset/484afc0c-2b62-4218-a464-ef32a1a60a69/historic-marine-protected-areas']
-
     
+    #urls to the Cadw datasets
+    cadw = [r"https://datamap.gov.wales/layers/inspire-wg:Cadw_DesignatedWrecks",
+     r"https://datamap.gov.wales/layers/inspire-wg:Cadw_ListedBuildings",
+     r'https://datamap.gov.wales/layers/inspire-wg:Cadw_HistoricLandscapes',
+     r'https://datamap.gov.wales/layers/inspire-wg:Cadw_SAM',
+     r"https://datamap.gov.wales/layers/geonode:GWC21_World_Heritage_Site",
+     r"https://datamap.gov.wales/layers/inspire-wg:conservation_areas"]
+
     if mytimer.past_due:
         logging.info('The timer is past due!')
-    
+        
+    req = requests.get(uri)
     try:
         req.raise_for_status()
         
@@ -129,7 +137,10 @@ def main(mytimer: func.TimerRequest, outputblob: func.Out[bytes]):
         last_column = heritage.pop('dataset')
         heritage.insert(0, 'dataset', last_column)
         
-        heritage.reset_index(inplace=True, drop=True)
+
+        
+
+
         #reorder the columns
         heritage = heritage.iloc[:,[7,0,5,4,6]]
         combined = df.append(heritage)
@@ -140,6 +151,49 @@ def main(mytimer: func.TimerRequest, outputblob: func.Out[bytes]):
         logging.info('The Heritage dataset was empty')
         combined = df
 
+    cadws = pd.DataFrame()
+    for ur in cadw:
+        req = requests.get(ur)
+        try:
+            req.raise_for_status()
+            soup = bs4.BeautifulSoup(req.text, 'html.parser')
+            table = soup.find('dl')
+            # table headers
+            heads= [t.text.strip(':') for t in table.find_all('dt')]
+            #table body
+            body = [i.text.strip().replace('\n','') for i in  table.find_all('dd') if not table.find_all('dd').index(i) in (2,5) ]
+            #create a dictionary object
+            data =dict(zip(heads, body))
+            #get the name of the dataset                        
+            data['dataset'] = [h.text for h in soup.findAll('h2', {'class':"page-title"})][0]
+            data['source'] = ur
+            #rename the keys
+            if 'Creation date' in data.keys():
+                data['Publication date'] = data.pop('Creation date')
+            
+
+            cadws = cadws.append(data, ignore_index=True)
+
+        
+        except Exception as e:
+            logging.info(f'There was a problem: {e} \n with the {ur}') 
+
+    if len(cadws)> 0:
+        logging.info(f'The length of the Cadw dataset is: {len(cadws)}')
+        cadws.drop(columns=['Keywords', 'Point of contact', 'License', 'Category', 'Type'], inplace= True)
+        popped = cadws.pop('dataset')
+        cadws.insert(0, 'dataset', popped)
+        cadws.insert(0, 'organisation', 'Cadw')
+        cadws = cadws.assign(last_update = cadws['Publication date'].astype('datetime64'),
+            updated = lambda x: x.last_update > check)
+
+        cadws.pop('Publication date')
+        combined = combined.append(cadws)
+        logging.info(f'The length of all datasets is: {len(combined)}')
+    else:
+        logging.info('The Cadws dataset was empty')
+
+    combined.reset_index(inplace=True, drop=True)
     #get only the updated shapefiles
     df_updated = combined[combined['updated']==True]
     logging.info('The size of the Updates dataset is {}'.format(len(df_updated)))
@@ -152,6 +206,7 @@ def main(mytimer: func.TimerRequest, outputblob: func.Out[bytes]):
     
     
     logging.info(output)
+
     logging.info("\nUploading to Azure Storage as blob")
     outputblob.set(output)    
 
